@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0A0714">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2213%22%20fill%3D%22none%22%20stroke%3D%22%23B45CFF%22%20stroke-width%3D%223%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%225%22%20fill%3D%22%233FD9C7%22%2F%3E%3C%2Fsvg%3E">
+<title>モニタリング · 誓见注视的二创节奏游戏</title>
+<link rel="preconnect" href="https://miaoda.feishu.cn" crossorigin>
+<link href="https://miaoda.feishu.cn/fonts/css2?family=ZCOOL+KuaiLe&family=Rubik+Glitch&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="stage">
+  <!-- 背景层：原 MV 画面（静音，跟随音频时钟） -->
+  <video id="bg-video" src="assets/bg.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+
+  <!-- 音源：交给 <audio> 元素承载，currentTime 是判定的唯一时间基准 -->
+  <audio id="track" src="assets/audio.m4a" preload="auto" playsinline hidden></audio>
+
+  <div id="scan"></div>
+  <div id="seam"></div>
+
+  <!-- 墨水流体层：透明 WebGL 油墨翻卷，前期马卡龙段浓亮铺开，高潮收弱避免混乱 -->
+  <canvas id="fluid" aria-hidden="true"></canvas>
+
+  <!-- 油膜混光层：透明 WebGL，油滴入水式混乱彩色流光，叠在视频之上、游戏画布之下 -->
+  <canvas id="oil" aria-hidden="true"></canvas>
+
+  <!-- 居中镜头主体与弹窗贴纸按本 MV 母题绘制；飞眼、花瓣等代码简笔元素已移除，背景保留 MV 抠图贴纸 -->
+
+  <!-- 顶部状态：分数 / 准确率 / 连击 / 进度（传统音游计数，不设血条） -->
+  <div id="hud" class="hud is-hidden">
+    <div class="hud-row">
+      <div class="hud-cell">
+        <span class="hud-label">SCORE</span>
+        <span class="hud-value" id="hud-score">0000000</span>
+      </div>
+      <div class="hud-cell hud-cell-center">
+        <span class="hud-label">ACC</span>
+        <span class="hud-value" id="hud-acc">100.00%</span>
+      </div>
+      <div class="hud-cell hud-cell-right">
+        <span class="hud-label">COMBO</span>
+        <span class="hud-value" id="hud-combo">0</span>
+      </div>
+    </div>
+    <div class="hud-progress"><div class="hud-progress-bar" id="hud-progress"></div></div>
+  </div>
+
+  <!-- 音符与特效 -->
+  <canvas id="game"></canvas>
+
+  <!-- 从原 MV 抠帧得到的透明贴纸（静态 src 供发布爬虫收录，JS 里 drawImage 用） -->
+  <img class="pp-src" src="assets/sticker-eye.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-eye2.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-eye-closed.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-star.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-star-blue.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-heart-pink.png" alt="" aria-hidden="true">
+  <img class="pp-src" src="assets/sticker-heart-blue.png" alt="" aria-hidden="true">
+
+  <!-- 品红/青绿色差残影：模拟信号错位的坏屏感，由 JS 按拍子抖动 -->
+  <div id="chroma" aria-hidden="true"></div>
+
+  <!-- 下端滚动字幕（歌词） -->
+  <div id="lyric" class="lyric is-hidden" aria-hidden="true">
+    <span id="lyric-text"></span>
+  </div>
+
+  <!-- 右上控件 -->
+  <div id="controls" class="controls is-hidden">
+    <button class="ctrl-btn" id="btn-fx" type="button" aria-label="闪烁强度">FX</button>
+    <button class="ctrl-btn" id="btn-mute" type="button" aria-label="静音">SND</button>
+    <button class="ctrl-btn" id="btn-pause" type="button" aria-label="暂停">II</button>
+  </div>
+
+  <!-- ============ 面板 ============ -->
+  <div id="overlay" class="overlay">
+
+    <!-- 开始：简洁透明，中间圆形播放键，旁边设置 / 自动打 -->
+    <section class="panel panel-start" id="panel-start">
+      <p class="kicker">DECO*27 · モニタリング</p>
+      <button class="tri-btn" id="btn-start" type="button" aria-label="开始">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M24 17 L47 32 L24 47 Z" fill="currentColor" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="diff-seg" id="diff-seg" role="group" aria-label="难度选择">
+        <button class="diff-btn" data-diff="0" type="button">简单</button>
+        <button class="diff-btn" data-diff="1" type="button">普通</button>
+        <button class="diff-btn" data-diff="2" type="button">困难</button>
+      </div>
+      <div class="start-row">
+        <button class="btn-ghost sm" id="btn-auto" type="button" aria-pressed="false">自动打</button>
+        <button class="btn-ghost sm" id="btn-open-settings" type="button">设置</button>
+      </div>
+      <p class="credit-note">非官方同人作品，不用于商业用途；音乐与画面素材版权归原作者及权利人所有</p>
+    </section>
+
+    <!-- 设置 -->
+    <section class="panel is-hidden" id="panel-settings">
+      <p class="kicker">Settings</p>
+      <h2 class="title-cn">设置</h2>
+      <div class="rule"></div>
+      <div class="set-group">
+        <span class="set-label">音效</span>
+        <button class="set-toggle" id="set-snd" type="button">开</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">特效</span>
+        <button class="set-toggle" id="set-fx" type="button">标准</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">难度</span>
+        <button class="set-toggle" id="set-diff" type="button">普通</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">MV 背景</span>
+        <button class="set-toggle" id="set-mv" type="button">开</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">流光特效</span>
+        <button class="set-toggle" id="set-walker" type="button">开</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">流星特效</span>
+        <button class="set-toggle" id="set-meteor" type="button">开</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">墨水特效</span>
+        <button class="set-toggle" id="set-ink" type="button">开</button>
+      </div>
+      <div class="set-group">
+        <span class="set-label">眼珠特效</span>
+        <button class="set-toggle" id="set-eye" type="button">开</button>
+      </div>
+      <div class="set-group set-keys">
+        <span class="set-label">按键</span>
+        <div class="diff-seg" id="key-seg" role="group" aria-label="键位方案">
+          <button class="diff-btn" data-scheme="sdjk" type="button">S D J K</button>
+          <button class="diff-btn" data-scheme="asdf" type="button">A S D F</button>
+        </div>
+      </div>
+      <button class="btn" id="btn-settings-back" type="button">返回</button>
+    </section>
+
+    <!-- 暂停 -->
+    <section class="panel is-hidden" id="panel-pause">
+      <p class="kicker">Paused</p>
+      <h2 class="title-cn" style="font-size:clamp(20px,5vw,30px);letter-spacing:0.2em;">已暂停</h2>
+      <div class="rule"></div>
+      <div class="brief">
+        <p>进度和连击都还在。继续就从停下的地方接上。</p>
+      </div>
+      <button class="btn" id="btn-resume" type="button">继续</button>
+      <button class="btn btn-ghost" id="btn-quit" type="button">退出重来</button>
+    </section>
+
+    <!-- 结算 -->
+    <section class="panel is-hidden" id="panel-result">
+      <p class="kicker">诊断报告 / Diagnosis</p>
+      <p class="result-grade" id="r-grade">C</p>
+      <p class="diag" id="r-verdict">—</p>
+      <div class="result-grid">
+        <div class="result-cell"><span class="k">SCORE</span><span class="v" id="r-score">0</span></div>
+        <div class="result-cell"><span class="k">MAX COMBO</span><span class="v" id="r-combo">0</span></div>
+        <div class="result-cell"><span class="k">ACCURACY</span><span class="v" id="r-acc">0.00%</span></div>
+        <div class="result-cell"><span class="k">BEST</span><span class="v" id="r-best">0</span></div>
+      </div>
+      <button class="btn" id="btn-retry" type="button">再来一局</button>
+      <button class="btn btn-ghost" id="btn-back" type="button">回到开始</button>
+    </section>
+
+  </div>
+
+  <p id="boot-hint">正在载入音源</p>
+</div>
+
+<script src="js/sfx.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/lyric.js"></script>
+<script src="js/game.js"></script>
+<script src="js/level.js"></script>
+<script src="js/rough.min.js"></script>
+<script src="js/fluid-gl.js"></script>
+<script src="js/oil.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
